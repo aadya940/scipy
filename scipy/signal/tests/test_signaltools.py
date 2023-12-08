@@ -31,7 +31,7 @@ from scipy.signal._signaltools import (_filtfilt_gust, _compute_factors,
                                       _group_poles)
 from scipy.signal._upfirdn import _upfirdn_modes
 from scipy._lib import _testutils
-from scipy._lib._util import ComplexWarning
+from scipy._lib._util import ComplexWarning, np_long, np_ulong
 
 
 class _TestConvolve:
@@ -1084,7 +1084,7 @@ class TestMedFilt:
         assert_array_equal(d, e)
 
     @pytest.mark.parametrize('dtype', [np.ubyte, np.byte, np.ushort, np.short,
-                                       np.uint, int, np.ulonglong, np.ulonglong,
+                                       np_ulong, np_long, np.ulonglong, np.ulonglong,
                                        np.float32, np.float64])
     def test_types(self, dtype):
         # volume input and output types match
@@ -1911,7 +1911,7 @@ def test_lfilter_notimplemented_input():
 
 
 @pytest.mark.parametrize('dt', [np.ubyte, np.byte, np.ushort, np.short,
-                                np.uint, int, np.ulonglong, np.ulonglong,
+                                np_ulong, np_long, np.ulonglong, np.ulonglong,
                                 np.float32, np.float64, np.longdouble,
                                 Decimal])
 class TestCorrelateReal:
@@ -1950,8 +1950,12 @@ class TestCorrelateReal:
             y_fft = correlate(a, b, method='fft')
             y_direct = correlate(a, b, method='direct')
 
-            assert_array_almost_equal(y_r, y_fft, decimal=self.equal_tolerance_fft(y_fft.dtype))
-            assert_array_almost_equal(y_r, y_direct, decimal=self.equal_tolerance(y_direct.dtype))
+            assert_array_almost_equal(y_r,
+                                      y_fft,
+                                      decimal=self.equal_tolerance_fft(y_fft.dtype),)
+            assert_array_almost_equal(y_r,
+                                      y_direct,
+                                      decimal=self.equal_tolerance(y_direct.dtype),)
             assert_equal(y_fft.dtype, dt)
             assert_equal(y_direct.dtype, dt)
 
@@ -2383,7 +2387,7 @@ def filtfilt_gust_opt(b, a, x):
     This function computes the same result as
     `scipy.signal._signaltools._filtfilt_gust`, but only 1-d arrays
     are accepted.  The problem is solved using `fmin` from `scipy.optimize`.
-    `_filtfilt_gust` is significanly faster than this implementation.
+    `_filtfilt_gust` is significantly faster than this implementation.
     """
     def filtfilt_gust_opt_func(ics, b, a, x):
         """Objective function used in filtfilt_gust_opt."""
@@ -2558,7 +2562,7 @@ class TestDecimate:
         rate = 120
         rates_to = [15, 20, 30, 40]  # q = 8, 6, 4, 3
 
-        t_tot = int(100)  # Need to let antialiasing filters settle
+        t_tot = 100  # Need to let antialiasing filters settle
         t = np.arange(rate*t_tot+1) / float(rate)
 
         # Sinusoids at 0.8*nyquist, windowed to avoid edge artifacts

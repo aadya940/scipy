@@ -25,6 +25,7 @@ __all__ = ['fmin', 'fmin_powell', 'fmin_bfgs', 'fmin_ncg', 'fmin_cg',
 
 __docformat__ = "restructuredtext en"
 
+import math
 import warnings
 import sys
 import inspect
@@ -289,7 +290,7 @@ def _check_unknown_options(unknown_options):
         # Stack level 4: this is called from _minimize_*, which is
         # called from another function in SciPy. Level 4 is the first
         # level in user code.
-        warnings.warn("Unknown solver options: %s" % msg, OptimizeWarning, 4)
+        warnings.warn("Unknown solver options: %s" % msg, OptimizeWarning, stacklevel=4)
 
 
 def is_finite_scalar(x):
@@ -421,7 +422,8 @@ def _clip_x_for_func(func, bounds):
 def _check_clip_x(x, bounds):
     if (x < bounds[0]).any() or (x > bounds[1]).any():
         warnings.warn("Values in x were outside bounds during a "
-                      "minimize step, clipping to bounds", RuntimeWarning)
+                      "minimize step, clipping to bounds",
+                      RuntimeWarning, stacklevel=3)
         x = np.clip(x, bounds[0], bounds[1])
         return x
 
@@ -857,10 +859,12 @@ def _minimize_neldermead(func, x0, args=(), callback=None,
         lower_bound, upper_bound = bounds.lb, bounds.ub
         # check bounds
         if (lower_bound > upper_bound).any():
-            raise ValueError("Nelder Mead - one of the lower bounds is greater than an upper bound.")
+            raise ValueError("Nelder Mead - one of the lower bounds "
+                             "is greater than an upper bound.",
+                             stacklevel=3)
         if np.any(lower_bound > x0) or np.any(x0 > upper_bound):
             warnings.warn("Initial guess is not within the specified bounds",
-                          OptimizeWarning, 3)
+                          OptimizeWarning, stacklevel=3)
 
     if bounds is not None:
         x0 = np.clip(x0, lower_bound, upper_bound)
@@ -1015,12 +1019,12 @@ def _minimize_neldermead(func, x0, args=(), callback=None,
         warnflag = 1
         msg = _status_message['maxfev']
         if disp:
-            warnings.warn(msg, RuntimeWarning, 3)
+            warnings.warn(msg, RuntimeWarning, stacklevel=3)
     elif iterations >= maxiter:
         warnflag = 2
         msg = _status_message['maxiter']
         if disp:
-            warnings.warn(msg, RuntimeWarning, 3)
+            warnings.warn(msg, RuntimeWarning, stacklevel=3)
     else:
         msg = _status_message['success']
         if disp:
@@ -1198,8 +1202,8 @@ def check_grad(func, grad, x0, *args, epsilon=_epsilon,
         vars = x0
         analytical_grad = grad(x0, *args)
     else:
-        raise ValueError("{} is not a valid string for "
-                         "``direction`` argument".format(direction))
+        raise ValueError(f"{direction} is not a valid string for "
+                         "``direction`` argument")
 
     return np.sqrt(np.sum(np.abs(
         (analytical_grad - approx_fprime(vars, _func, step, *_args))**2
@@ -1307,8 +1311,8 @@ def fmin_bfgs(f, x0, fprime=None, args=(), gtol=1e-5, norm=np.inf,
     c2 : float, default: 0.9
         Parameter for curvature condition rule.
     hess_inv0 : None or ndarray, optional``
-        Initial inverse hessian estimate, shape (n, n). If None (default) then the identity
-        matrix is used.
+        Initial inverse hessian estimate, shape (n, n). If None (default) then
+        the identity matrix is used.
 
     Returns
     -------
@@ -1446,12 +1450,20 @@ def _minimize_bfgs(fun, x0, args=(), jac=None, callback=None,
     c2 : float, default: 0.9
         Parameter for curvature condition rule.
     hess_inv0 : None or ndarray, optional
-        Initial inverse hessian estimate, shape (n, n). If None (default) then the identity
-        matrix is used.
+        Initial inverse hessian estimate, shape (n, n). If None (default) then
+        the identity matrix is used.
 
     Notes
     -----
     Parameters `c1` and `c2` must satisfy ``0 < c1 < c2 < 1``.
+
+    If minimization doesn't complete successfully, with an error message of
+    ``Desired error not necessarily achieved due to precision loss``, then
+    consider setting `gtol` to a higher value. This precision loss typically
+    occurs when the (finite difference) numerical differentiation cannot provide
+    sufficient precision to satisfy the `gtol` termination criterion.
+    This can happen when working in single precision and a callable jac is not
+    provided. For single precision problems a `gtol` of 1e-3 seems to work.
     """
     _check_unknown_options(unknown_options)
     _check_positive_definite(hess_inv0)
@@ -1530,7 +1542,7 @@ def _minimize_bfgs(fun, x0, args=(), jac=None, callback=None,
             break
 
         rhok_inv = np.dot(yk, sk)
-        # this was handled in numeric, let it remaines for more safety
+        # this was handled in numeric, let it remains for more safety
         # Cryptic comment above is preserved for posterity. Future reader:
         # consider change to condition below proposed in gh-1261/gh-17345.
         if rhok_inv == 0.:
@@ -1871,8 +1883,8 @@ def _minimize_cg(fun, x0, args=(), jac=None, callback=None,
         try:
             alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
                      _line_search_wolfe12(f, myfprime, xk, pk, gfk, old_fval,
-                                          old_old_fval, c1=c1, c2=c2, amin=1e-100, amax=1e100,
-                                          extra_condition=descent_condition)
+                                          old_old_fval, c1=c1, c2=c2, amin=1e-100,
+                                          amax=1e100, extra_condition=descent_condition)
         except _LineSearchError:
             # Line search failed to find a better solution.
             warnflag = 2
@@ -2092,7 +2104,7 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
 
     # Logic for hess/hessp
     # - If a callable(hess) is provided, then use that
-    # - If hess is a FD_METHOD, or the output fom hess(x) is a LinearOperator
+    # - If hess is a FD_METHOD, or the output from hess(x) is a LinearOperator
     #   then create a hessp function using those.
     # - If hess is None but you have callable(hessp) then use the hessp.
     # - If hess and hessp are None then approximate hessp using the grad/jac.
@@ -2128,8 +2140,8 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
     cg_maxiter = 20*len(x0)
 
     xtol = len(x0) * avextol
-    update = [2 * xtol]
-    xk = x0
+    update_l1norm = 2 * xtol
+    xk = np.copy(x0)
     if retall:
         allvecs = [xk]
     k = 0
@@ -2137,15 +2149,15 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
     old_fval = f(x0)
     old_old_fval = None
     float64eps = np.finfo(np.float64).eps
-    while np.add.reduce(np.abs(update)) > xtol:
+    while update_l1norm > xtol:
         if k >= maxiter:
             msg = "Warning: " + _status_message['maxiter']
             return terminate(1, msg)
         # Compute a search direction pk by applying the CG method to
         #  del2 f(xk) p = - grad f(xk) starting from 0.
         b = -fprime(xk)
-        maggrad = np.add.reduce(np.abs(b))
-        eta = np.min([0.5, np.sqrt(maggrad)])
+        maggrad = np.linalg.norm(b, ord=1)
+        eta = min(0.5, math.sqrt(maggrad))
         termcond = eta * maggrad
         xsupi = zeros(len(x0), dtype=x0.dtype)
         ri = -b
@@ -2155,7 +2167,7 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
 
         if fhess is not None:             # you want to compute hessian once.
             A = sf.hess(xk)
-            hcalls = hcalls + 1
+            hcalls += 1
 
         for k2 in range(cg_maxiter):
             if np.add.reduce(np.abs(ri)) <= termcond:
@@ -2165,7 +2177,7 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
                     Ap = approx_fhess_p(xk, psupi, fprime, epsilon)
                 else:
                     Ap = fhess_p(xk, psupi, *args)
-                    hcalls = hcalls + 1
+                    hcalls += 1
             else:
                 if isinstance(A, HessianUpdateStrategy):
                     # if hess was supplied as a HessianUpdateStrategy
@@ -2185,12 +2197,12 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
                     xsupi = dri0 / (-curv) * b
                     break
             alphai = dri0 / curv
-            xsupi = xsupi + alphai * psupi
-            ri = ri + alphai * Ap
+            xsupi += alphai * psupi
+            ri += alphai * Ap
             dri1 = np.dot(ri, ri)
             betai = dri1 / dri0
             psupi = -ri + betai * psupi
-            i = i + 1
+            i += 1
             dri0 = dri1          # update np.dot(ri,ri) for next time.
         else:
             # curvature keeps increasing, bail out
@@ -2211,13 +2223,14 @@ def _minimize_newtoncg(fun, x0, args=(), jac=None, hess=None, hessp=None,
             return terminate(2, msg)
 
         update = alphak * pk
-        xk = xk + update        # upcast if necessary
+        xk += update        # upcast if necessary
         if retall:
             allvecs.append(xk)
         k += 1
         intermediate_result = OptimizeResult(x=xk, fun=old_fval)
         if _call_callback_maybe_halt(callback, intermediate_result):
             return terminate(5, "")
+        update_l1norm = np.linalg.norm(update, ord=1)
 
     else:
         if np.isnan(old_fval) or np.isnan(update).any():
@@ -3233,7 +3246,7 @@ def _linesearch_powell(func, p, xi, tol=1e-3,
                        lower_bound=None, upper_bound=None, fval=None):
     """Line-search algorithm using fminbound.
 
-    Find the minimium of the function ``func(x0 + alpha*direc)``.
+    Find the minimum of the function ``func(x0 + alpha*direc)``.
 
     lower_bound : np.array.
         The lower bounds for each parameter in ``x0``. If the ``i``th
@@ -3556,7 +3569,7 @@ def _minimize_powell(func, x0, args=(), callback=None, bounds=None,
         if np.linalg.matrix_rank(direc) != direc.shape[0]:
             warnings.warn("direc input is not full rank, some parameters may "
                           "not be optimized",
-                          OptimizeWarning, 3)
+                          OptimizeWarning, stacklevel=3)
 
     if bounds is None:
         # don't make these arrays of all +/- inf. because
@@ -3569,7 +3582,7 @@ def _minimize_powell(func, x0, args=(), callback=None, bounds=None,
         lower_bound, upper_bound = bounds.lb, bounds.ub
         if np.any(lower_bound > x0) or np.any(x0 > upper_bound):
             warnings.warn("Initial guess is not within the specified bounds",
-                          OptimizeWarning, 3)
+                          OptimizeWarning, stacklevel=3)
 
     fval = squeeze(func(x))
     x1 = x.copy()
@@ -3940,10 +3953,9 @@ def brute(func, ranges, args=(), Ns=20, full_output=0, finish=fmin,
             success = res[-1] == 0
         if not success:
             if disp:
-                warnings.warn(
-                    "Either final optimization did not succeed "
-                    "or `finish` does not return `statuscode` as its last "
-                    "argument.", RuntimeWarning, 2)
+                warnings.warn("Either final optimization did not succeed or `finish` "
+                              "does not return `statuscode` as its last argument.",
+                              RuntimeWarning, stacklevel=2)
 
     if full_output:
         return xmin, Jmin, grid, Jout

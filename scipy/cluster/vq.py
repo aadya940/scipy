@@ -68,7 +68,7 @@ import warnings
 import numpy as np
 from collections import deque
 from scipy._lib._array_api import (
-    as_xparray, array_namespace, size, atleast_nd, copy
+    as_xparray, array_namespace, size, atleast_nd, copy, cov
 )
 from scipy._lib._util import check_random_state, rng_integers
 from scipy.spatial.distance import cdist
@@ -139,7 +139,7 @@ def whiten(obs, check_finite=True):
         std_dev[zero_std_mask] = 1.0
         warnings.warn("Some columns have standard deviation zero. "
                       "The values of these columns will not change.",
-                      RuntimeWarning)
+                      RuntimeWarning, stacklevel=2)
     return obs / std_dev
 
 
@@ -544,28 +544,28 @@ def _krandinit(data, k, rng, xp):
 
     """
     mu = xp.mean(data, axis=0)
+    k = np.asarray(k)
 
     if data.ndim == 1:
-        cov = xp.cov(data)
+        _cov = cov(data)
         x = rng.standard_normal(size=k)
         x = xp.asarray(x)
-        x *= xp.sqrt(cov)
+        x *= xp.sqrt(_cov)
     elif data.shape[1] > data.shape[0]:
         # initialize when the covariance matrix is rank deficient
         _, s, vh = xp.linalg.svd(data - mu, full_matrices=False)
         x = rng.standard_normal(size=(k, size(s)))
         x = xp.asarray(x)
         sVh = s[:, None] * vh / xp.sqrt(data.shape[0] - xp.asarray(1.))
-        x = xp.matmul(x, sVh)
+        x = x @ sVh
     else:
-        # TODO ARRAY_API cov not supported
-        cov = atleast_nd(xp.cov(data.T), ndim=2, xp=xp)
+        _cov = atleast_nd(cov(data.T), ndim=2)
 
         # k rows, d cols (one row = one obs)
         # Generate k sample of a random variable ~ Gaussian(mu, cov)
         x = rng.standard_normal(size=(k, size(mu)))
         x = xp.asarray(x)
-        x = xp.matmul(x, xp.linalg.cholesky(cov).T)
+        x = x @ xp.linalg.cholesky(_cov).T
 
     x += mu
     return x
@@ -622,7 +622,8 @@ _valid_init_meth = {'random': _krandinit, 'points': _kpoints, '++': _kpp}
 def _missing_warn():
     """Print a warning when called."""
     warnings.warn("One of the clusters is empty. "
-                  "Re-run kmeans with a different initialization.")
+                  "Re-run kmeans with a different initialization.",
+                  stacklevel=3)
 
 
 def _missing_raise():
@@ -794,7 +795,7 @@ def kmeans2(data, k, iter=10, thresh=1e-5, minit='random',
             raise ValueError("Cannot ask kmeans2 for %d clusters"
                              " (k was %s)" % (nc, code_book))
         elif nc != code_book:
-            warnings.warn("k was not an integer, was converted.")
+            warnings.warn("k was not an integer, was converted.", stacklevel=2)
 
         try:
             init_meth = _valid_init_meth[minit]
