@@ -4510,6 +4510,21 @@ class TestMakeSplrep(_TestMakeSplrepBase):
         assert spl_0.t.shape[0] == n + k + 1
         assert spl_1.t.shape[0] == 2 * (k + 1)
     
+    def test_small_s_fallback_not_a_knot(self):
+        s1 = 0
+        s2 = 1e-8
+        rng = np.random.default_rng(1234)
+        x = np.arange(11, dtype=float)
+        y = rng.random((11,))
+        spl1 = make_splrep(x, y, s=s1)
+        spl2 = make_splrep(x, y, s=s2)
+        spl_interp = make_interp_spline(x, y, bc_type="not-a-knot")
+        xs = np.linspace(x[0], x[-1], 100)
+        # Should fallback to not-a-knot, same as make_interp_spline
+        # since s=0.
+        xp_assert_close(spl1(xs), spl_interp(xs))
+        xp_assert_close(spl2(xs), spl_interp(xs), atol=1e-4)
+
 
 @make_xp_test_case(make_splrep)
 class TestMakeSplrepPeriodic(_TestMakeSplrepBase):
@@ -4596,6 +4611,21 @@ class TestMakeSplrepPeriodic(_TestMakeSplrepBase):
         y = np.exp(x)
         spl = make_splrep(x, y, s=1e-8, bc_type=self.bc_type)
         xp_assert_close(spl(x[0]), spl(x[-1]), atol=1e-5)
+    
+    def test_small_s_fallback_interp(self):
+        s1 = 0
+        s2 = 1e-8
+        rng = np.random.default_rng(1234)
+        x = np.arange(11, dtype=float)
+        y = np.sin(x * np.pi / 5) + rng.standard_normal(11) * 0.5
+        y[0], y[-1] = 0, 0
+        spl1 = make_splrep(x, y, s=s1, bc_type="periodic")
+        spl2 = make_splrep(x, y, s=s2, bc_type="periodic")
+        spl_interp = make_interp_spline(x, y, bc_type="periodic")
+        xs = np.linspace(x[0], x[-1], 100)
+        # Should fallback to periodic interpolation.
+        xp_assert_close(spl1(xs), spl_interp(xs))
+        xp_assert_close(spl2(xs), spl_interp(xs), atol=1e-4)
 
     @pytest.mark.parametrize("s", [0, 1e-50])
     def test_make_splrep_periodic_m_eq_2_k_eq_1(self, s):
