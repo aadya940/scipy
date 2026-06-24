@@ -4611,7 +4611,7 @@ class TestMakeSplrepPeriodic(_TestMakeSplrepBase):
         y = np.exp(x)
         spl = make_splrep(x, y, s=1e-8, bc_type=self.bc_type)
         xp_assert_close(spl(x[0]), spl(x[-1]), atol=1e-5)
-    
+
     def test_small_s_fallback_interp(self):
         s1 = 0
         s2 = 1e-8
