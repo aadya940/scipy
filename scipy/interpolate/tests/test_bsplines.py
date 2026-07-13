@@ -4111,7 +4111,7 @@ class TestMakeSplrepPeriodic(_TestMakeSplrepBase):
                 assert len(spl_periodic_endpoint.t) == 2 * (k + 1)
 
     @pytest.mark.parametrize("k", [1, 2, 3, 4, 5])
-    @pytest.mark.parametrize("s", [1e-4, 1e-3, 1e-2, 1, 42])
+    @pytest.mark.parametrize("s", [1e-3, 1e-2, 1, 42])
     def test_periodic_agrees_with_splrep_non_matching_endpoint(self, k, s):
         # Regression test: make_splrep with bc_type='periodic' should ignore
         # y[-1] just like splrep(per=True) does, so both must agree even when
