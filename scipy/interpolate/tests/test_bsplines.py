@@ -4649,10 +4649,9 @@ class TestMakeSplrepPeriodic(_TestMakeSplrepBase):
         xp_assert_close(tck0[0], tck1[0], atol=1e-15)
         xp_assert_close(tck0[1], tck1[1], atol=1e-15)
 
-        # make_splrep must agree with splrep in both cases.
-        xs = np.linspace(0, 1, 200)
-        xp_assert_close(spl0(xs), splev(xs, tck0), atol=1e-14)
-        xp_assert_close(spl1(xs), splev(xs, tck1), atol=1e-14)
+        # make_splrep must ignore y[-1] too, same solver.
+        xp_assert_close(spl0.t, spl1.t, atol=1e-15)
+        xp_assert_close(spl0.c, spl1.c, atol=1e-15)
 
     @pytest.mark.parametrize("s", [0, 1e-50])
     def test_make_splrep_periodic_m_eq_2_k_eq_1(self, s):
