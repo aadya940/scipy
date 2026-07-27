@@ -3977,6 +3977,19 @@ index 1afb1900f1..d817e51ad8 100644
         with pytest.raises(ValueError, match="weights are zero"):
             list(gen)
 
+    @pytest.mark.parametrize("s", [1e-8, 1, 42])
+    def test_periodic_non_matching_endpoints_ignored(self, s):
+        # gh-24693: for s > 0, generate_knots should ignore y[-1] for
+        # bc_type='periodic', just like make_splrep does.
+        x = np.linspace(0, 1, 11)
+        y = np.sin(2 * np.pi * x)
+        y1 = y.copy()
+        y1[-1] = 1
+        k = 3
+        knots0 = list(generate_knots(x, y, k=k, s=s, bc_type="periodic"))[-1]
+        knots1 = list(generate_knots(x, y1, k=k, s=s, bc_type="periodic"))[-1]
+        xp_assert_close(knots0, knots1, atol=1e-14)
+
 
 def disc_naive(t, k):
     """Straightforward way to compute the discontinuity matrix. For testing ONLY.
@@ -4955,6 +4968,33 @@ class TestMakeSplprepPeriodic:
             xp_assert_close(spl.c, expected.c, atol=1e-12)
             xp_assert_close(spl.t, expected.t, atol=1e-12)
             assert spl.extrapolate == expected.extrapolate
+
+    def test_periodic_non_matching_endpoints_s0_raises(self):
+        # gh-24693: at s = 0, matching endpoints are required for
+        # bc_type='periodic'.
+        theta = np.linspace(0, 2 * np.pi, 11)
+        x = np.cos(theta)
+        y = np.sin(theta)
+        x1 = x.copy()
+        x1[-1] = 5
+        with assert_raises(ValueError):
+            make_splprep([x1, y], s=0, bc_type="periodic")
+
+    @pytest.mark.parametrize("s", [1e-8, 1, 42])
+    def test_periodic_non_matching_endpoints_ignored(self, s):
+        # gh-24693: for s > 0, make_splprep should ignore the last point
+        # for bc_type='periodic', just like make_splrep does.
+        theta = np.linspace(0, 2 * np.pi, 11)
+        x = np.cos(theta)
+        y = np.sin(theta)
+        x1 = x.copy()
+        x1[-1] = 5
+        u = np.linspace(0, 1, 11)
+        spl0, u0 = make_splprep([x, y], u=u, s=s, bc_type="periodic")
+        spl1, u1 = make_splprep([x1, y], u=u, s=s, bc_type="periodic")
+        xp_assert_close(spl0.t, spl1.t, atol=1e-14)
+        xp_assert_close(spl0.c, spl1.c, atol=1e-14)
+
 
 class BatchSpline:
     # BSpline-line class with reference batch behavior
