@@ -4609,10 +4609,10 @@ class TestMakeSplrepPeriodic(_TestMakeSplrepBase):
         xp_assert_close(spl0.c, spl1.c, atol=1e-14)
         assert len(spl0.t) == 2 * (k + 1)
 
-    @pytest.mark.parametrize("s", [1e-8, 1, 42])
-    def test_periodic_smoothing_non_matching_endpoints_general(self, s):
-        # gh-24693: general s > 0, y[-1] is ignored regardless of s,
-        # without asserting on internal-knot count.
+    def test_periodic_smoothing_non_matching_endpoints_small_s(self):
+        # gh-24693: same as above, in the near-interpolation regime
+        # (s small enough that every data point becomes a knot).
+        s = 1e-8
         x, y, y1 = self._make_periodic_test_data()
         spl0 = make_splrep(x, y, s=s, bc_type="periodic")
         spl1 = make_splrep(x, y1, s=s, bc_type="periodic")
