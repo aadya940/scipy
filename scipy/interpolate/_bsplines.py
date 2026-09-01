@@ -3019,7 +3019,8 @@ def _make_smoothing_spline_user_knots(x, y, w, lam, t, axis, *, xp, device=None)
     # corner, whose true penalty (integral of a delta squared) is
     # infinite, yet Omega returns a finite value because the hat function
     # at the triple knot has zero width and drops that contribution: the
-    # corner would come for free at every lam.
+    # corner would come for free at every lam. Full derivation in the
+    # companion report, Sec. 15 FAQ 2 (link in make_smoothing_spline).
     vals, counts = np.unique(t, return_counts=True)
     if counts[0] != 4 or counts[-1] != 4:
         raise ValueError(
@@ -3056,16 +3057,19 @@ def _make_smoothing_spline_user_knots(x, y, w, lam, t, axis, *, xp, device=None)
     try:
         c = solveh_banded(XtWX_banded + lam * omega, XtWy, lower=True)
     except LinAlgError as e:
+        # why only the two extremes of lam can fail: companion report,
+        # Sec. 15 FAQ 1 (link in make_smoothing_spline)
         raise ValueError(
             "the system `X^T W X + lam * Omega` is not positive definite, so "
-            "the coefficients are not uniquely determined. Two causes are "
-            "possible: the support of some basis function contains no data, "
-            "i.e. some interval (t[j], t[j+4]) has no `x` in it (use fewer "
-            "knots, or pass a larger `lam`), or `lam` is so large that "
-            "the system is numerically singular, since its condition number "
-            "grows proportionally to `lam` (use a smaller `lam`; the fit at "
-            "such `lam` is already indistinguishable from its straight-line "
-            "limit).") from e
+            "the coefficients are not uniquely determined. This happens only "
+            "at the two extremes of `lam`. At `lam` zero or near zero: the "
+            "support of some basis function contains no data, i.e. some "
+            "interval (t[j], t[j+4]) has no `x` in it (use fewer knots, or a "
+            "larger `lam`, which lets the penalty determine the coefficients "
+            "the data cannot see). At very large `lam`: the system is "
+            "numerically singular, since its condition number grows "
+            "proportionally to `lam` (use a smaller `lam`; the fit there is "
+            "already indistinguishable from its straight-line limit).") from e
     c = np.ascontiguousarray(c)
     t, c = xp.asarray(t, device=device), xp.asarray(c, device=device)
     return BSpline.construct_fast(t, c, 3, axis=axis)
@@ -3159,10 +3163,11 @@ def make_smoothing_spline(x, y, w=None, lam=None, *, t=None, axis=0):
     derivative at the two boundary knots). If ``t`` is specified, the
     function returns a cubic spline with these predefined knots
     (sometimes referred to as an O'Sullivan penalized spline [5]_); no
-    boundary conditions are imposed. In both cases the returned
-    `BSpline` has ``extrapolate=True``, so evaluating it outside the
-    base interval continues the first or last polynomial piece rather
-    than returning zeros.
+    boundary conditions are imposed. In particular, if the given ``t``
+    contains all the data sites, the natural boundary behavior is not
+    lost: the unconstrained minimizer satisfies the natural conditions
+    on its own, so the two paths return the same spline. The returned
+    `BSpline` has ``extrapolate=True``.
 
     References
     ----------

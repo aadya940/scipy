@@ -2678,8 +2678,12 @@ class TestSmoothingSpline:
         xp_assert_close(spl.c, spl_lsq.c, rtol=1e-13)
 
     def test_penalty_matrix_is_valid(self):
-        # structural invariants of the penalty matrix
-        t = np.r_[[0.] * 3, np.arange(100.), [99.] * 3]
+        # structural invariants of the penalty matrix, on deliberately
+        # non-uniform knots (none of the properties below rely on
+        # equidistant spacing)
+        rng = np.random.RandomState(5)
+        breaks = np.sort(np.r_[0.0, rng.uniform(0, 99, 98), 99.0])
+        t = np.r_[[0.] * 3, breaks, [99.] * 3]
         m = len(t) - 4
         ab = _penalty_matrix_banded(t)
         assert ab.shape == (4, m)
@@ -2687,10 +2691,20 @@ class TestSmoothingSpline:
         omega = _dense_omega(ab, m)
 
         # constants and straight lines have zero curvature: Omega must
-        # NOT penalize them (they span its null space)
+        # NOT penalize them (they span its null space). `greville` is
+        # not samples of a line: it is the *coefficient vector* of the
+        # identity function, sum_j greville[j] * B_j(u) == u exactly,
+        # where greville[j] is the average of three consecutive interior
+        # knots. This linear-reproduction identity holds for any knot
+        # vector, not just equidistant ones (de Boor, "B(asic)-Spline
+        # Basics", eqs. (4.7)-(4.8)).
         greville = np.array([t[i+1:i+4].mean() for i in range(m)])
-        xp_assert_close(omega @ np.ones(m), np.zeros(m), atol=1e-14)
-        xp_assert_close(omega @ greville, np.zeros(m), atol=1e-11)
+        # zero is meant relative to the size of Omega's entries, which
+        # grow like 1/h^3 for narrow knot intervals
+        scale = np.abs(omega).max()
+        xp_assert_close(omega @ np.ones(m), np.zeros(m), atol=1e-15 * scale)
+        xp_assert_close(omega @ greville, np.zeros(m),
+                        atol=1e-13 * scale * np.abs(greville).max())
 
     def test_penalty_matrix_matches_R(self):
         # Penalty matrix vs. R's fda::bsplinepen (values generated
@@ -2778,6 +2792,45 @@ class TestSmoothingSpline:
         lam = 2.678534932760e-03 * 10.0**3     # lambda_R * range^3
         spl = make_smoothing_spline(x, y, lam=lam, t=t)
         xp_assert_close(spl(x), ss_vals, atol=5e-5)
+
+    def test_schoenberg_whitney_violation_matches_R_fda(self):
+        # Knots placed across a data-free region: the support of some
+        # basis function contains no data site, so the Schoenberg-Whitney
+        # condition is violated and X is rank deficient. For lam > 0 the
+        # penalized system is still positive definite (the penalty
+        # determines the coefficients the data cannot see), and the
+        # result matches R's fda::smooth.basis on the same problem.
+        # Values generated with R 4.5.2, fda 6.3.0. To reproduce, in R:
+        #   library(fda)
+        #   x <- c(seq(0, 0.25, length.out = 10),
+        #          seq(0.75, 1.0, length.out = 10))
+        #   y <- sin(6 * x) + 0.05 * cos(29 * x)
+        #   basis <- create.bspline.basis(rangeval = c(0, 1),
+        #                                 breaks = seq(0, 1, by = 0.1),
+        #                                 norder = 4)
+        #   fit <- smooth.basis(x, y, fdPar(basis, Lfdobj = 2,
+        #                                   lambda = 1e-4))
+        #   xtest <- c(0, 0.15, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0)
+        #   print(eval.fd(xtest, fit$fd), digits = 13)
+        fda_vals = np.array([
+            0.056236187672, 0.772862300717, 1.015536599705, 0.620429667553,
+            0.066217067456, -0.508027108914, -1.005775420755,
+            -0.750404680158, -0.351858389890])
+
+        x = np.r_[np.linspace(0, 0.25, 10), np.linspace(0.75, 1.0, 10)]
+        y = np.sin(6 * x) + 0.05 * np.cos(29 * x)
+        tk = np.linspace(0, 1, 11)
+        t = np.r_[[0.0]*3, tk, [1.0]*3]
+        m = len(t) - 4
+        # the violation is explicit, not assumed: at least one basis
+        # function's support (t[j], t[j+4]) contains no data site
+        violating = [j for j in range(m)
+                     if not np.any((x > t[j]) & (x < t[j + 4]))]
+        assert violating, "test setup must violate Schoenberg-Whitney"
+
+        spl = make_smoothing_spline(x, y, lam=1e-4, t=t)
+        xtest = np.array([0, 0.15, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0])
+        xp_assert_close(spl(xtest), fda_vals, atol=1e-10)
 
     def test_matches_R_smooth_spline_user_knots(self):
         # vs base R's smooth.spline with the *same user knots* forced on
@@ -2908,7 +2961,8 @@ class TestSmoothingSpline:
 
     def test_more_knots_than_data_lam_zero(self):
         # lam=0 is an unpenalized least-squares fit, so it needs at least
-        # as many data points as basis functions
+        # as many data points as basis functions. Why the requirement
+        # exists only at lam=0: companion report, Sec. 15 FAQ 1
         x = np.linspace(-2.0, 2.0, 5)
         y = 2.0 * x + 1.0
         t = np.r_[[-2.0]*4, [-1.0, -0.5, 0.0, 0.5, 1.0], [2.0]*4]
@@ -2916,9 +2970,18 @@ class TestSmoothingSpline:
             make_smoothing_spline(x, y, lam=0.0, t=t)
 
         # the same knots are fine once the penalty is active: straight lines
-        # are in the null space of Omega, so the line is reproduced exactly
+        # are in the null space of Omega (zero curvature and, on this data,
+        # zero residual, so the objective is exactly zero), and the line is
+        # reproduced exactly at any lam > 0
         spl = make_smoothing_spline(x, y, lam=1e-3, t=t)
         xp_assert_close(spl(x), y, atol=1e-10)
+
+        # contrast: a parabola is representable on these knots but has
+        # curvature, so its penalty is positive and for lam > 0 the fit
+        # trades curvature for residual; exact reproduction must FAIL
+        y2 = x**2 + 1.0
+        spl2 = make_smoothing_spline(x, y2, lam=1e-3, t=t)
+        assert np.max(np.abs(spl2(x) - y2)) > 1e-6
 
     def test_rank_deficient_system(self):
         # knots in a region with no data: at lam = 0 the basis functions
